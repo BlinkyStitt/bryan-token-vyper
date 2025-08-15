@@ -1,0 +1,16 @@
+default_ecosystem: base
+
+base:
+  default_network: mainnet
+  mainnet:
+    default_provider: node
+
+name: bryan-token
+
+node:
+  ethereum:
+    mainnet:
+      uri: http://10.11.12.16:8547
+  base:
+    mainnet:
+      uri: https://base.llamarpc.com
