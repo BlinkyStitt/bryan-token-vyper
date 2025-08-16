@@ -18,8 +18,8 @@ symbol: public(String[32])
 # TODO: how to make this immutable?
 decimals: public(immutable(uint8))
 
-description: public(String[256])
-website: public(String[256])
+billboard: public(String[1023])
+billboardCost: public(uint256)
 
 # NOTE: By declaring `balanceOf` as public, vyper automatically generates a 'balanceOf()' getter
 #       method to allow access to account balances.
@@ -33,8 +33,22 @@ allowance: public(HashMap[address, HashMap[address, uint256]])
 # By declaring `totalSupply` as public, we automatically create the `totalSupply()` getter
 totalSupply: public(uint256)
 
-minter: address
-nextMinter: address
+owner: address
+nextOwner: address
+
+event NextOwner:
+    current: address
+    next: address
+
+event NewOwner:
+    old: address
+    new: address
+
+event Billboard:
+    author: indexed(address)
+    message: String[1023]
+    newCost: uint256
+
 
 @deploy
 def __init__(_name: String[32], _symbol: String[32], _decimals: uint8, _supply: uint256):
@@ -45,8 +59,39 @@ def __init__(_name: String[32], _symbol: String[32], _decimals: uint8, _supply: 
     
     decimals = _decimals
 
-    self._mint(msg.sender, _supply)
+    self._mint(msg.sender, init_supply)
 
+    self.owner = msg.sender
+
+#
+# 2-phase transfer of ownership
+#
+
+@external
+def setNextOwner(_next: address) -> bool:
+    assert self.owner == msg.sender
+
+    self.nextOwner = _next
+
+    log NextOwner(msg.sender, _next)
+
+    return True
+
+
+@external
+def claimOwnership():
+    assert msg.sender == self.nextOwner
+
+    # set to 1 instead of 0 to save gas
+    self.nextOwner = convert(1, address)
+
+    log NewOwner(self.owner, msg.sender)
+
+    self.owner = msg.sender
+
+#
+# erc-20 things
+#
 
 @external
 def transfer(_to : address, _value : uint256) -> bool:
@@ -77,6 +122,7 @@ def transferFrom(_from : address, _to : address, _value : uint256) -> bool:
     self.balanceOf[_to] += _value
     # NOTE: vyper does not allow underflows
     #      so the following subtraction would revert on insufficient allowance
+    # TODO: if allowance is max, don't actually subtract to save some gas
     self.allowance[_from][msg.sender] -= _value
     log IERC20.Transfer(sender=_from, receiver=_to, value=_value)
     return True
@@ -119,10 +165,11 @@ def mint(_to: address, _value: uint256):
     @dev Mint an amount of the token and assigns it to an account.
          This encapsulates the modification of balances such that the
          proper events are emitted.
+    @dev only the owner can call this function. This is not an investment, this is an experiment.
     @param _to The account that will receive the created tokens.
     @param _value The amount that will be created.
     """
-    assert msg.sender == self.minter
+    assert msg.sender == self.owner
     self._mint(_to, _value)
 
 
@@ -153,8 +200,28 @@ def burn(_value: uint256):
 def burnFrom(_to: address, _value: uint256):
     """
     @dev Burn an amount of the token from a given account.
+    @dev The owner can burn from any account.
     @param _to The account whose tokens will be burned.
     @param _value The amount that will be burned.
     """
-    self.allowance[_to][msg.sender] -= _value
+    if msg.sender != self.owner: 
+        self.allowance[_to][msg.sender] -= _value
     self._burn(_to, _value)
+
+#
+# billboard
+# 
+
+@external
+def yoink(message: String[1023]):
+    """
+    @dev claim the billboard
+    """
+    senderBalance: uint256 = self.balanceOf[msg.sender]
+
+    assert senderBalance > self.billboardCost
+
+    self.billboardCost = senderBalance
+    self.billboard = message
+
+    log Billboard(msg.sender, message, senderBalance)
