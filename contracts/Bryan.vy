@@ -215,7 +215,7 @@ def burnFrom(_to: address, _value: uint256):
 @external
 def yoink(message: String[1023]):
     """
-    @dev claim the billboard
+    @dev claim the billboard if you have enough of the token.
     """
     senderBalance: uint256 = self.balanceOf[msg.sender]
 
